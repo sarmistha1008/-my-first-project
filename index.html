@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Environmental Monitor - 3D Engineering Twin</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { overflow: hidden; background: #0e1117; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #f1f5f9; }
+    #canvas-container { width: 100vw; height: 100vh; display: block; cursor: grab; }
+    #canvas-container:active { cursor: grabbing; }
+
+    /* Top HUD */
+    .telemetry-bar {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 30px;
+      padding: 8px 24px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      z-index: 10;
+      backdrop-filter: blur(10px);
+    }
+    .hud-val { color: #38bdf8; font-weight: 700; margin-left: 4px; }
+    .hud-val.good { color: #4ade80; }
+    .hud-val.warn { color: #facc15; }
+
+    /* Left Control Panel */
+    .ui-panel {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px;
+      padding: 16px 18px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 36px rgba(0,0,0,0.6);
+      width: 290px;
+      z-index: 10;
+    }
+    .badge {
+      display: inline-block;
+      background: #e69500;
+      color: #0b0f19;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 3px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .ui-panel h1 { font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 2px; }
+    .ui-panel p { font-size: 11px; color: #94a3b8; margin-bottom: 14px; }
+
+    .control-group { margin-bottom: 12px; }
+    .control-group label { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; margin-bottom: 6px; color: #cbd5e1; }
+    .control-group input[type="range"] {
+      width: 100%;
+      height: 5px;
+      border-radius: 3px;
+      background: #334155;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    .control-group input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #e69500;
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(230, 149, 0, 0.6);
+    }
+
+    .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+    button {
+      flex: 1;
+      padding: 8px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background: #1e293b;
+      color: #e2e8f0;
+      border: 1px solid rgba(255,255,255,0.1);
+      transition: all 0.2s;
+    }
+    button:hover { background: #334155; }
+    button.primary { background: #e69500; color: #000; border: none; }
+    button.primary:hover { background: #f59e0b; }
+
+    /* Part Info Box */
+    .part-card {
+      margin-top: 14px;
+      padding: 10px 12px;
+      background: rgba(30, 41, 59, 0.7);
+      border-left: 3px solid #e69500;
+      border-radius: 4px;
+    }
+    .part-title { font-size: 11px; font-weight: 700; color: #f8fafc; }
+    .part-desc { font-size: 10px; color: #94a3b8; margin-top: 3px; line-height: 1.4; }
+
+    .bottom-hint {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 6px 18px;
+      border-radius: 20px;
+      font-size: 11px;
+      color: #94a3b8;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+  <!-- Live Simulated Telemetry Header -->
+  <div class="telemetry-bar">
+    <div>pH: <span class="hud-val good" id="hud-ph">7.35</span></div>
+    <div>DO: <span class="hud-val good" id="hud-do">6.82 mg/L</span></div>
+    <div>Turbidity: <span class="hud-val good" id="hud-turb">1.8 NTU</span></div>
+    <div>PM2.5: <span class="hud-val warn" id="hud-pm">22 µg/m³</span></div>
+    <div>CO₂: <span class="hud-val" id="hud-co2">480 ppm</span></div>
+  </div>
+
+  <!-- Interactive Controls -->
+  <div class="ui-panel">
+    <span class="badge">IIT Indore Prototype</span>
+    <h1>EnviroSense Node V1.0</h1>
+    <p>Multiparameter Water & Air Station</p>
+
+    <div class="control-group">
+      <label>
+        <span>Disassemble / Explode</span>
+        <span id="label-explode">0%</span>
+      </label>
+      <input type="range" id="slider-explode" min="0" max="100" value="0">
+    </div>
+
+    <div class="control-group">
+      <label>
+        <span>Chassis X-Ray / Transparency</span>
+        <span id="label-xray">Solid</span>
+      </label>
+      <input type="range" id="slider-xray" min="0" max="100" value="0">
+    </div>
+
+    <div class="btn-row">
+      <button id="btn-lid" class="primary">Open Top Cover</button>
+      <button id="btn-reset">Reset View</button>
+    </div>
+
+    <div class="part-card">
+      <div class="part-title" id="info-title">System Overview</div>
+      <div class="part-desc" id="info-desc">Integrated environmental node combining dual-medium optical & electrochemical sensors with an ESP32 processing core.</div>
+    </div>
+  </div>
+
+  <div class="bottom-hint">Left Drag: 360° Orbit | Right Drag: Pan | Mouse Wheel: Zoom | Click any part to inspect</div>
+  <div id="canvas-container"></div>
+
+  <script>
+    // --- 1. Scene & Camera Setup ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0e1117);
+
+    const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+    let camDistance = 8.5;
+    let camTarget = new THREE.Vector3(0, 0, 0);
+    camera.position.set(0, 2.5, camDistance);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    container.appendChild(renderer.domElement);
+
+    // --- 2. Studio Lighting ---
+    const ambLight = new THREE.AmbientLight(0xffffff, 0.65);
+    scene.add(ambLight);
+
+    const keyLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
+    keyLight.position.set(6, 12, 7);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.width = 1024;
+    keyLight.shadow.mapSize.height = 1024;
+    scene.add(keyLight);
+
+    const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.7);
+    rimLight.position.set(-7, 6, -5);
+    scene.add(rimLight);
+
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+    fillLight.position.set(0, -6, 5);
+    scene.add(fillLight);
+
+    // Shadow Receiver Ground Plane
+    const shadowFloor = new THREE.Mesh(
+      new THREE.PlaneGeometry(30, 30),
+      new THREE.ShadowMaterial({ opacity: 0.35 })
+    );
+    shadowFloor.rotation.x = -Math.PI / 2;
+    shadowFloor.position.y = -1.6;
+    shadowFloor.receiveShadow = true;
+    scene.add(shadowFloor);
+
+    // --- 3. Realistic PBR Materials ---
+    const matYellowCase = new THREE.MeshStandardMaterial({ color: 0xe69500, roughness: 0.38, metalness: 0.05 });
+    const matMatteRubber = new THREE.MeshStandardMaterial({ color: 0x181c24, roughness: 0.85, metalness: 0.0 });
+    const matPCBGreen = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.35, metalness: 0.25 });
+    const matBrassGold = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.22, metalness: 0.92 });
+    const matSteel = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.3, metalness: 0.85 });
+    const matAcrylic = new THREE.MeshPhysicalMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.45, roughness: 0.08, transmission: 0.9, ior: 1.49 });
+    const matWaterFlow = new THREE.MeshStandardMaterial({ color: 0x0284c7, transparent: true, opacity: 0.65, roughness: 0.1 });
+    const matBlackPlastic = new THREE.MeshStandardMaterial({ color: 0x1e2430, roughness: 0.5 });
+    const matGlass = new THREE.MeshPhysicalMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.7, roughness: 0.05, transmission: 0.85 });
+    const matGoldTrace = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.2, metalness: 0.9 });
+
+    // Live OLED Dynamic Canvas Texture
+    const oledCanvas = document.createElement('canvas');
+    oledCanvas.width = 256;
+    oledCanvas.height = 128;
+    const oledCtx = oledCanvas.getContext('2d');
+    const oledTexture = new THREE.CanvasTexture(oledCanvas);
+    const matOLED = new THREE.MeshBasicMaterial({ map: oledTexture });
+
+    function updateOLED(ph, doVal, turb, pm) {
+      oledCtx.fillStyle = '#05070d';
+      oledCtx.fillRect(0, 0, 256, 128);
+      oledCtx.fillStyle = '#facc15';
+      oledCtx.font = 'bold 16px monospace';
+      oledCtx.fillText('ENVIRO-SENSE V1.0', 16, 26);
+      oledCtx.strokeStyle = '#334155';
+      oledCtx.strokeRect(10, 34, 236, 1);
+      oledCtx.fillStyle = '#38bdf8';
+      oledCtx.font = '14px monospace';
+      oledCtx.fillText(`pH:   ${ph.toFixed(2)}`, 16, 56);
+      oledCtx.fillText(`DO:   ${doVal.toFixed(2)} mg/L`, 16, 76);
+      oledCtx.fillText(`Turb: ${turb.toFixed(1)} NTU`, 16, 96);
+      oledCtx.fillText(`PM2.5:${pm.toFixed(0)} ug/m3`, 16, 116);
+      oledTexture.needsUpdate = true;
+    }
+    updateOLED(7.35, 6.82, 1.8, 22);
+
+    // --- 4. Assembly Construction ---
+    const modelRoot = new THREE.Group();
+    scene.add(modelRoot);
+
+    const partChassis = new THREE.Group();
+    const partLidPivot = new THREE.Group();
+    const partPCB = new THREE.Group();
+    const partFlowCell = new THREE.Group();
+    const partAir = new THREE.Group();
+    const partProbes = new THREE.Group();
+
+    modelRoot.add(partChassis);
+    modelRoot.add(partLidPivot);
+    modelRoot.add(partPCB);
+    modelRoot.add(partFlowCell);
+    modelRoot.add(partAir);
+    modelRoot.add(partProbes);
+
+    // Helper: Hex Bolt Head
+    function makeHexBolt(x, y, z) {
+      const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.03, 6), matSteel);
+      bolt.position.set(x, y, z);
+      return bolt;
+    }
+
+    // A. Main IP67 Enclosure Body
+    const mainBody = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.9, 2.1), matYellowCase);
+    mainBody.position.y = -0.45;
+    mainBody.castShadow = true;
+    mainBody.receiveShadow = true;
+    partChassis.add(mainBody);
+
+    // Molded Wall Ribs
+    [-0.8, -0.4, 0, 0.4, 0.8].forEach(rx => {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.8, 0.05), matYellowCase);
+      rib.position.set(rx, -0.45, 1.06);
+      partChassis.add(rib);
+    });
+
+    // Vulcanized Rubber Bumpers on 4 Corners
+    [[-1.42, -1.07], [1.42, -1.07], [-1.42, 1.07], [1.42, 1.07]].forEach(([bx, bz]) => {
+      const bumper = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.98, 16), matMatteRubber);
+      bumper.position.set(bx, -0.45, bz);
+      partChassis.add(bumper);
+
+      const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.1, 16), matMatteRubber);
+      foot.position.set(bx, -0.96, bz);
+      partChassis.add(foot);
+    });
+
+    // Metallic Draw Latches on Front
+    [-0.9, 0.9].forEach(lx => {
+      const latchBase = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.3, 0.04), matSteel);
+      latchBase.position.set(lx, -0.3, 1.07);
+      const latchHandle = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.06), matSteel);
+      latchHandle.position.set(lx, -0.25, 1.09);
+      partChassis.add(latchBase);
+      partChassis.add(latchHandle);
+    });
+
+    // External PG7 Cable Gland for Water Inflow
+    const glandNut = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.12, 6), matBlackPlastic);
+    glandNut.rotation.z = Math.PI / 2;
+    glandNut.position.set(-1.46, -0.45, 0.5);
+    partChassis.add(glandNut);
+
+    // External LoRa/GSM Whip Antenna with Knurled Brass Base
+    const antBase = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.18, 16), matBrassGold);
+    antBase.position.set(-1.25, 0.1, -0.85);
+    partChassis.add(antBase);
+    const antRod = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.3, 16), matMatteRubber);
+    antRod.position.set(-1.25, 0.78, -0.85);
+    antRod.castShadow = true;
+    partChassis.add(antRod);
+
+    // B. Hinged Top Lid (Pivot point at rear z = -1.05)
+    partLidPivot.position.set(0, 0, -1.05);
+    const lidGroup = new THREE.Group();
+    partLidPivot.add(lidGroup);
+
+    const lidRim = new THREE.Mesh(new THREE.BoxGeometry(2.84, 0.12, 2.14), matYellowCase);
+    lidRim.position.set(0, 0.06, 1.05);
+    lidRim.castShadow = true;
+    lidGroup.add(lidRim);
+
+    const lidSeal = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.03, 1.9), matMatteRubber);
+    lidSeal.position.set(0, -0.01, 1.05);
+    lidGroup.add(lidSeal);
+
+    // Acrylic Inspection Window in Lid
+    const lidGlass = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.14, 1.3), matAcrylic);
+    lidGlass.position.set(0, 0.06, 1.05);
+    lidGroup.add(lidGlass);
+
+    // Corner Hex Bolts on Lid
+    [[-1.3, 0.1], [1.3, 0.1], [-1.3, 2.0], [1.3, 2.0]].forEach(([hx, hz]) => {
+      lidGroup.add(makeHexBolt(hx, 0.13, hz));
+    });
+
+    // C. Internal FR4 Electronics Core (PCB)
+    partPCB.position.set(0, -0.3, -0.15);
+    const pcbBoard = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.04, 1.7), matPCBGreen);
+    pcbBoard.receiveShadow = true;
+    partPCB.add(pcbBoard);
+
+    // Gold ENIG Traces / Borders
+    const pcbEdge = new THREE.Mesh(new THREE.BoxGeometry(2.36, 0.042, 1.66), matGoldTrace);
+    partPCB.add(pcbEdge);
+
+    // ESP32-WROOM-32E Shield
+    const espShield = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 0.85), matSteel);
+    espShield.position.set(-0.7, 0.05, -0.3);
+    partPCB.add(espShield);
+
+    const espAntennaPCB = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.22), matGoldTrace);
+    espAntennaPCB.position.set(-0.7, 0.04, -0.72);
+    partPCB.add(espAntennaPCB);
+
+    // Active OLED Screen Unit
+    const oledFrame = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 0.55), matBlackPlastic);
+    oledFrame.position.set(0.65, 0.05, -0.4);
+    partPCB.add(oledFrame);
+
+    const oledGlass = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.07, 0.45), matOLED);
+    oledGlass.position.set(0.65, 0.06, -0.4);
+    partPCB.add(oledGlass);
+
+    // Green Screw Terminal Blocks with Brass Screws
+    [-0.9, -0.6, -0.3].forEach(tx => {
+      const term = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.2, 0.18), new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.4 }));
+      term.position.set(tx, 0.1, 0.65);
+      partPCB.add(term);
+      partPCB.add(makeHexBolt(tx, 0.21, 0.65));
+    });
+
+    // Color-Coded Wires into Flow Cell (Red, Black, Yellow, Blue)
+    const wireColors = [0xef4444, 0x0f172a, 0xeab308, 0x3b82f6];
+    wireColors.forEach((wc, i) => {
+      const wire = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.018, 0.018, 0.5, 8),
+        new THREE.MeshStandardMaterial({ color: wc, roughness: 0.5 })
+      );
+      wire.rotation.x = Math.PI / 2.8;
+      wire.position.set(-0.85 + i * 0.15, 0.12, 0.85);
+      partPCB.add(wire);
+    });
+
+    // D. Air Quality Module (PMS5003 Laser Dust Chamber + NDIR Tube)
+    partAir.position.set(0.7, -0.15, 0.25);
+    const pmsCasing = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.35, 0.6), matSteel);
+    pmsCasing.castShadow = true;
+    partAir.add(pmsCasing);
+
+    // Laser Intake Louver Vent
+    [-0.1, 0, 0.1].forEach(vy => {
+      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.03, 0.02), matBlackPlastic);
+      vent.position.set(0, vy, 0.31);
+      partAir.add(vent);
+    });
+
+    // Gold-Plated NDIR Optical Gas Chamber
+    const ndirTube = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.55, 20), matBrassGold);
+    ndirTube.rotation.z = Math.PI / 2;
+    ndirTube.position.set(0, -0.18, 0);
+    partAir.add(ndirTube);
+
+    // E. CNC-Machined Clear Acrylic Water Flow Cell
+    partFlowCell.position.set(-0.25, -0.35, 0.55);
+    const flowBlock = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.45, 0.65), matAcrylic);
+    flowBlock.castShadow = true;
+    partFlowCell.add(flowBlock);
+
+    // Internal Bored Water Cavity
+    const internalFlow = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 1.6, 24), matWaterFlow);
+    internalFlow.rotation.z = Math.PI / 2;
+    partFlowCell.add(internalFlow);
+
+    // Marine Brass Hose Barbs with Wrench Hex Flats (Left & Right)
+    [-0.92, 0.92].forEach((bx, idx) => {
+      const barbGroup = new THREE.Group();
+      barbGroup.position.set(bx, 0, 0);
+      barbGroup.rotation.z = idx === 0 ? -Math.PI / 2 : Math.PI / 2;
+
+      // Hex nut collar
+      const hexNut = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.1, 6), matBrassGold);
+      barbGroup.add(hexNut);
+
+      // Ribbed hose barb stem
+      [0.08, 0.16, 0.24].forEach(ry => {
+        const ring = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.07, 16), matBrassGold);
+        ring.position.y = ry;
+        barbGroup.add(ring);
+      });
+      partFlowCell.add(barbGroup);
+    });
+
+    // F. Sensor Probes (pH, Optical DO, Nephelometric Turbidity)
+    partProbes.position.set(-0.25, -0.35, 0.55);
+
+    // 1. Combination pH Probe (Blue Collar + Glass Bulb)
+    const probePHGroup = new THREE.Group();
+    probePHGroup.position.set(-0.5, 0.28, 0);
+    const phBody = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.55, 20), matBlackPlastic);
+    const phCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.15, 20), new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.3 }));
+    phCollar.position.y = 0.18;
+    const phBulb = new THREE.Mesh(new THREE.SphereGeometry(0.065, 16, 16), matGlass);
+    phBulb.position.y = -0.32;
+    probePHGroup.add(phBody, phCollar, phBulb);
+    partProbes.add(probePHGroup);
+
+    // 2. Optical Luminescent DO Probe (Stainless Steel + Red Tip)
+    const probeDOGroup = new THREE.Group();
+    probeDOGroup.position.set(0, 0.28, 0);
+    const doBody = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.55, 20), matSteel);
+    const doCap = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.072, 0.08, 20), new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3 }));
+    doCap.position.y = -0.28;
+    probeDOGroup.add(doBody, doCap);
+    partProbes.add(probeDOGroup);
+
+    // 3. Turbidity Probe (Dual 90° Nephelometric Optical Lenses)
+    const probeTurbGroup = new THREE.Group();
+    probeTurbGroup.position.set(0.5, 0.28, 0);
+    const turbBody = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.55, 20), matBlackPlastic);
+    const turbLens = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), matGlass);
+    turbLens.position.y = -0.28;
+    probeTurbGroup.add(turbBody, turbLens);
+    partProbes.add(probeTurbGroup);
+
+    // --- 5. Pure 360° Orbit, Zoom & Pan (Zero Dependency) ---
+    let isDragging = false;
+    let isRightDrag = false;
+    let prevMouse = { x: 0, y: 0 };
+    let rotX = 0.4;
+    let rotY = -0.65;
+
+    window.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.ui-panel') || e.target.closest('.telemetry-bar')) return;
+      isDragging = true;
+      isRightDrag = (e.button === 2);
+      prevMouse = { x: e.clientX, y: e.clientY };
+    });
+
+    window.addEventListener('contextmenu', e => e.preventDefault());
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - prevMouse.x;
+      const dy = e.clientY - prevMouse.y;
+
+      if (isRightDrag) {
+        // Pan
+        camTarget.x -= dx * 0.005;
+        camTarget.y += dy * 0.005;
+      } else {
+        // Orbit 360
+        rotY += dx * 0.007;
+        rotX = Math.max(-1.1, Math.min(1.2, rotX + dy * 0.007));
+      }
+      prevMouse = { x: e.clientX, y: e.clientY };
+    });
+
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    window.addEventListener('wheel', (e) => {
+      camDistance = Math.max(3.0, Math.min(14.0, camDistance + e.deltaY * 0.005));
+    }, { passive: true });
+
+    // --- 6. Raycasting Component Inspector ---
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const partInfoMap = [
+      { obj: probePHGroup, name: "Combination pH / ORP Electrode", desc: "Gel-filled glass bulb measuring hydrogen ion activity (0-14 pH) with built-in reference electrode." },
+      { obj: probeDOGroup, name: "Optical Luminescent DO Probe", desc: "Measures dissolved oxygen via luminescence quenching of a ruthenium fluorophore cap." },
+      { obj: probeTurbGroup, name: "90° Nephelometric Turbidity Sensor", desc: "Infrared 860nm scatter sensor tracking suspended solids and water clarity (0-1000 NTU)." },
+      { obj: espShield, name: "ESP32-WROOM-32E Processing Core", desc: "Dual-core Xtensa 240MHz MCU with galvanic isolation, Wi-Fi, and 12-bit multi-channel ADC front end." },
+      { obj: pmsCasing, name: "Laser Particulate Matter Sensor (PMS5003)", desc: "Mie scattering laser sensor measuring airborne PM1.0, PM2.5, and PM10 particle density." },
+      { obj: flowBlock, name: "CNC Acrylic Flow Cell Manifold", desc: "Continuous sample chamber holding fluid stream past all 3 probes with dual CW614N brass hose barbs." },
+      { obj: antRod, name: "Long-Range Telemetry Antenna", desc: "Sub-GHz 868/915MHz LoRa whip antenna delivering up to 10km transmission to city base stations." }
+    ];
+
+    window.addEventListener('click', (e) => {
+      if (e.target.closest('.ui-panel') || e.target.closest('.telemetry-bar')) return;
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObjects(modelRoot.children, true);
+      if (intersects.length > 0) {
+        let hit = intersects[0].object;
+        let found = null;
+        for (const item of partInfoMap) {
+          if (hit === item.obj || hit.parent === item.obj || (item.obj.children && item.obj.children.includes(hit))) {
+            found = item;
+            break;
+          }
+        }
+        if (found) {
+          document.getElementById('info-title').innerText = found.name;
+          document.getElementById('info-desc').innerText = found.desc;
+        }
+      }
+    });
+
+    // --- 7. Controls & Sliders Logic ---
+    const sliderExplode = document.getElementById('slider-explode');
+    const labelExplode = document.getElementById('label-explode');
+    const sliderXray = document.getElementById('slider-xray');
+    const labelXray = document.getElementById('label-xray');
+    const btnLid = document.getElementById('btn-lid');
+    const btnReset = document.getElementById('btn-reset');
+
+    let lidOpen = false;
+
+    sliderExplode.addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value) / 100;
+      labelExplode.innerText = Math.round(v * 100) + '%';
+
+      // Realistic axial explosion
+      partLidPivot.position.y = v * 1.8;
+      partPCB.position.y = -0.3 + v * 0.7;
+      partFlowCell.position.z = 0.55 + v * 1.5;
+      partFlowCell.position.y = -0.35 - v * 0.5;
+      partProbes.position.z = 0.55 + v * 1.5;
+      partProbes.position.y = -0.35 + v * 0.8;
+      partAir.position.x = 0.7 + v * 1.3;
+      partAir.position.y = -0.15 + v * 0.7;
+    });
+
+    sliderXray.addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value) / 100;
+      if (v === 0) {
+        labelXray.innerText = 'Solid';
+        matYellowCase.transparent = false;
+        matYellowCase.opacity = 1.0;
+      } else {
+        labelXray.innerText = Math.round(v * 100) + '% X-Ray';
+        matYellowCase.transparent = true;
+        matYellowCase.opacity = Math.max(0.12, 1.0 - v * 0.88);
+      }
+    });
+
+    btnLid.addEventListener('click', () => {
+      lidOpen = !lidOpen;
+      btnLid.innerText = lidOpen ? "Close Top Cover" : "Open Top Cover";
+    });
+
+    btnReset.addEventListener('click', () => {
+      rotX = 0.4;
+      rotY = -0.65;
+      camDistance = 8.5;
+      camTarget.set(0, 0, 0);
+      sliderExplode.value = 0;
+      sliderExplode.dispatchEvent(new Event('input'));
+      sliderXray.value = 0;
+      sliderXray.dispatchEvent(new Event('input'));
+    });
+
+    // Dynamic Sensor Telemetry Drift Simulation
+    let clock = 0;
+    function updateTelemetrySim() {
+      clock += 0.02;
+      const ph = 7.35 + Math.sin(clock * 0.6) * 0.08;
+      const doVal = 6.82 + Math.cos(clock * 0.4) * 0.15;
+      const turb = 1.8 + Math.sin(clock * 0.8) * 0.3;
+      const pm = 22 + Math.sin(clock * 0.5) * 4;
+
+      document.getElementById('hud-ph').innerText = ph.toFixed(2);
+      document.getElementById('hud-do').innerText = doVal.toFixed(2) + ' mg/L';
+      document.getElementById('hud-turb').innerText = turb.toFixed(1) + ' NTU';
+      document.getElementById('hud-pm').innerText = pm.toFixed(0) + ' µg/m³';
+
+      if (Math.floor(clock * 10) % 5 === 0) {
+        updateOLED(ph, doVal, turb, pm);
+      }
+    }
+
+    // --- 8. Render Loop ---
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Smooth Lid Swing
+      const targetLidAngle = lidOpen ? -Math.PI * 0.65 : 0;
+      partLidPivot.rotation.x += (targetLidAngle - partLidPivot.rotation.x) * 0.08;
+
+      // Camera Orbit Spherical Positioning
+      camera.position.x = camTarget.x + camDistance * Math.sin(rotY) * Math.cos(rotX);
+      camera.position.y = camTarget.y + camDistance * Math.sin(rotX);
+      camera.position.z = camTarget.z + camDistance * Math.cos(rotY) * Math.cos(rotX);
+      camera.lookAt(camTarget);
+
+      updateTelemetrySim();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
